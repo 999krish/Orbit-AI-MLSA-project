@@ -1,0 +1,41 @@
+Coastal Natural Color Code 
+
+// Define the region of interest (Sundarbans)
+var roi = ee.Geometry.Polygon([
+  [[88.0, 22.0], [89.0, 22.0], [89.0, 21.0], [88.0, 21.0], [88.0, 22.0]]
+]);
+
+// Function to mask clouds using the Sentinel-2 QA band.
+function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  var cloudBitMask = ee.Number(2).pow(10).int();
+  var cirrusBitMask = ee.Number(2).pow(11).int();
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0).and(
+              qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask).divide(10000);
+}
+
+// Function to get images for a specific period
+function getImages(startDate, endDate) {
+  return ee.ImageCollection('COPERNICUS/S2')
+    .filterBounds(roi)
+    .filterDate(startDate, endDate)
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+    .map(maskS2clouds)
+    .median();
+}
+
+// Define the time periods
+var periods = [
+  {start: '2019-03-01', end: '2019-03-31', label: '2019_3'},
+  {start: '2020-03-01', end: '2020-03-31', label: '2020_3'},
+  {start: '2020-04-15', end: '2020-05-15', label: '2020_4'},
+  {start: '2020-05-20', end: '2020-06-20', label: '2020_5'},
+  {start: '2020-09-01', end: '2020-09-30', label: '2020_9'},
+   {start: '2021-03-01', end: '2021-03-31', label: '2021_3'},
+  {start: '2021-09-01', end: '2021-09-30', label: '2021_9'},
+     {start: '2022-03-01', end: '2022-03-31', label: '2022_3'},
+  {start: '2022-09-01', end: '2022-09-30', label: '2022_9'},
+     {start: '2023-03-01', end: '2023-03-31', label: '2023_3'},
+  {start: '2023-09-01', end: '2023-09-30', label: '2023_9'},
+];

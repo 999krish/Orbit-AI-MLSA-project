@@ -1,0 +1,78 @@
+Cyclone - Natural Color and NDVI
+Data from following code into Google Earth Engine
+
+// Define the refined region of interest (coastal areas of West Bengal and Bangladesh)
+var cycloneRegion = ee.Geometry.Polygon([
+  [[88.0, 22.5], [89.0, 22.5], [89.0, 21.5], [88.0, 21.5], [88.0, 22.5]]
+]);
+
+// Define the time ranges for the additional months
+var additionalPeriods = [
+  {year: 2019, month: 6}, {year: 2019, month: 7}, {year: 2019, month: 8},
+  {year: 2020, month: 6}, {year: 2020, month: 7}, {year: 2020, month: 8},
+  {year: 2021, month: 6}, {year: 2021, month: 7}, {year: 2021, month: 8},
+  {year: 2022, month: 6}, {year: 2022, month: 7}, {year: 2022, month: 8},
+  {year: 2023, month: 6}, {year: 2023, month: 7}, {year: 2023, month: 8}
+];
+
+// Function to mask clouds using the Sentinel-2 QA band
+function maskS2Clouds(image) {
+  var qa = image.select('QA60');
+  var cloudBitMask = ee.Number(2).pow(10).int();
+  var cirrusBitMask = ee.Number(2).pow(11).int();
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0).and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask).divide(10000);
+}
+
+// Function to calculate NDVI
+function calculateNDVI(image) {
+  return image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+}
+
+// Loop over each time period to create composites for NDVI and natural color
+additionalPeriods.forEach(function(entry) {
+  var year = entry.year;
+  var month = entry.month;
+  
+  var startDate = ee.Date.fromYMD(year, month, 1);
+  var endDate = startDate.advance(1, 'month');
+
+  var collection = ee.ImageCollection('COPERNICUS/S2')
+    .filterBounds(cycloneRegion)
+    .filterDate(startDate, endDate)
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+    .map(maskS2Clouds);
+
+  // Natural color composite
+  var naturalColor = collection.median().clip(cycloneRegion).select(['B4', 'B3', 'B2']); // Red, Green, Blue bands
+  Map.addLayer(naturalColor, {bands: ['B4', 'B3', 'B2'], min: 0, max: 0.3}, 'Natural Color ' + year + '-' + month);
+
+  // Export natural color composite to Google Drive
+  Export.image.toDrive({
+    image: naturalColor,
+    description: 'NaturalColor_CycloneRegion_' + year + '_' + month,
+    folder: 'MSLA_Cyclone_Amphan',
+    scale: 30,
+    region: cycloneRegion,
+    fileFormat: 'GeoTIFF',
+    maxPixels: 1e9
+  });
+
+  // NDVI composite
+  var ndvi = collection.map(calculateNDVI).median().clip(cycloneRegion);
+  Map.addLayer(ndvi, {bands: ['NDVI'], min: 0, max: 1}, 'NDVI ' + year + '-' + month);
+
+  // Export NDVI composite to Google Drive
+  Export.image.toDrive({
+    image: ndvi,
+    description: 'NDVI_CycloneRegion_' + year + '_' + month,
+    folder: 'MSLA_Cyclone_Amphan',
+    scale: 30,
+    region: cycloneRegion,
+    fileFormat: 'GeoTIFF',
+    maxPixels: 1e9
+  });
+});
+
+// Center the map on the cyclone region
+Map.centerObject(cycloneRegion, 8);
